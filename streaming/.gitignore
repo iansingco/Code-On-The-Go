@@ -1,0 +1,4 @@
+.env
+workspace/
+apps/godot-game/project/
+node_modules/
