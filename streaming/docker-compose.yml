@@ -1,0 +1,82 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────
+# Generic Neko Streaming Launcher
+#
+# Each app streams a full desktop/terminal to a browser tab via WebRTC (neko).
+# The launcher at :8080 lets you start/stop/open any app from your phone.
+# Access everything over Tailscale — no port-forwarding needed.
+#
+# Ports:
+#   8080  — Launcher UI
+#   8081  — claude-code stream
+#   8082  — godot-game stream (enable with: docker compose --profile godot up)
+#
+# To add a new app:
+#   1. Add an entry in apps.config.json
+#   2. Add a service below (copy the claude-code block, bump ports/EPR range)
+#   3. Create apps/<name>/Dockerfile
+# ─────────────────────────────────────────────
+
+services:
+
+  # ── Launcher ───────────────────────────────
+  launcher:
+    build: ./launcher
+    restart: unless-stopped
+    ports:
+      - "8080:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./apps.config.json:/app/apps.config.json:ro
+      - .:/repo                              # repo root — used for git pull on webhook
+    environment:
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
+      COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
+      GIT_DIR: /repo
+
+  # ── Claude Code terminal ────────────────────
+  # Stream a terminal running Claude Code directly to your phone browser.
+  # Mount your project workspace at ./workspace or point the volume elsewhere.
+  claude-code:
+    build: ./apps/claude-code
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+      - "52000-52100:52000-52100/udp"
+    environment:
+      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
+      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
+      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
+      NEKO_EPR: "52000-52100"
+      NEKO_ICELITE: "true"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    volumes:
+      - ./workspace:/workspace
+    cap_add:
+      - SYS_ADMIN
+    shm_size: "2gb"
+
+  # ── Godot Game (optional) ───────────────────
+  # Enable with: docker compose --profile godot up -d
+  # Or set COMPOSE_PROFILES=godot in .env
+  godot-game:
+    build: ./apps/godot-game
+    restart: unless-stopped
+    profiles:
+      - godot
+    ports:
+      - "8082:8080"
+      - "52200-52300:52200-52300/udp"
+    environment:
+      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
+      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
+      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
+      NEKO_EPR: "52200-52300"
+      NEKO_ICELITE: "true"
+      NEKO_APP: "/bin/bash -c 'godot --path /app/game 2>/dev/null'"
+    volumes:
+      - ./apps/godot-game/project:/app/game
+    cap_add:
+      - SYS_ADMIN
+    shm_size: "2gb"

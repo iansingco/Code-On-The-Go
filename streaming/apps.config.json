@@ -1,0 +1,18 @@
+[
+  {
+    "id": "claude-code",
+    "label": "Claude Code",
+    "port": 8081,
+    "icon": "🤖",
+    "description": "Terminal with Claude Code — mobile CI/CD",
+    "autorestart": true
+  },
+  {
+    "id": "godot-game",
+    "label": "Godot Game",
+    "port": 8082,
+    "icon": "🎮",
+    "description": "Godot game preview",
+    "autorestart": true
+  }
+]
