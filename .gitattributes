@@ -1,0 +1,9 @@
+# Force LF line endings for shell scripts regardless of OS/git config.
+# Without this, git on Windows (core.autocrlf=true) will write CRLF into
+# .sh files, which Linux containers will reject with "bad interpreter" errors.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.js        text eol=lf
+*.html      text eol=lf

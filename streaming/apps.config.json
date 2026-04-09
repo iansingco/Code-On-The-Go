@@ -13,6 +13,20 @@
     "port": 8082,
     "icon": "🎮",
     "description": "Godot game preview",
-    "autorestart": true
+    "autorestart": false
+  },
+  {
+    "id": "desktop",
+    "label": "Virtual Desktop",
+    "port": 8083,
+    "icon": "🖥️",
+    "description": "Full XFCE Linux desktop — general purpose remote workspace"
+  },
+  {
+    "id": "calculator",
+    "label": "Calculator",
+    "port": 8084,
+    "icon": "🧮",
+    "description": "Single-app example — template for any Linux GUI app"
   }
 ]
