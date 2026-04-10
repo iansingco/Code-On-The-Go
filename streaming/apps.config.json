@@ -1,0 +1,17 @@
+[
+  {
+    "id": "desktop",
+    "label": "Virtual Desktop",
+    "port": 6901,
+    "icon": "🖥️",
+    "description": "Full XFCE Linux desktop"
+  },
+  {
+    "id": "claude-code",
+    "label": "Claude Code",
+    "port": 6902,
+    "icon": "🤖",
+    "description": "Terminal with Claude Code — mobile CI/CD",
+    "autorestart": true
+  }
+]

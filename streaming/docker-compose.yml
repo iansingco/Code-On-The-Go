@@ -1,60 +1,64 @@
 # ─────────────────────────────────────────────
-# KASM Workspaces — Generic Streaming Setup
+# KASM Standalone Streaming Setup
 #
-# KASM replaces the custom launcher. It provides:
-#   - Its own web portal (start sessions, pick workspaces)
-#   - User account management
-#   - Per-session disposable containers
-#   - Built-in streaming (KasmVNC over HTTPS)
+# Runs kasmweb workspace images directly — no KASM platform needed.
+# Each container has KasmVNC built in and streams over HTTPS to a browser tab.
+# Works on Docker Desktop for Windows (no Docker-in-Docker required).
+#
+# Access each stream at https://<ip>:<port>
+#   Login: kasm_user / <KASM_PASSWORD from .env>
 #
 # Ports:
-#   3000  — First-time setup wizard (only needed once)
-#   8443  — Main KASM portal (use this day-to-day)
-#   8080  — Webhook receiver for CI/CD git deploys
+#   8080  — Launcher UI (start/stop/open all apps)
+#   6901  — Desktop (full XFCE Linux desktop)
+#   6902  — Claude Code terminal
 #
-# First run:
-#   1. docker compose up -d
-#   2. Open https://<ip>:3000 to run the setup wizard
-#   3. After setup, use https://<ip>:8443 for everything
-#
-# Adding workspaces:
-#   Build a workspace image (see workspaces/) then register it in
-#   KASM admin panel → Workspaces → Add Workspace → Docker image name.
+# To add a new app:
+#   1. Add a service below (copy a block, bump the host port)
+#   2. Add an entry in apps.config.json
+#   3. Optionally create a custom image in workspaces/<name>/
 # ─────────────────────────────────────────────
 
 services:
 
-  # ── KASM Platform ──────────────────────────
-  # Single container that runs the full KASM stack (Docker-in-Docker).
-  # It manages its own internal Docker daemon to spin up workspace sessions.
-  kasm:
-    image: lscr.io/linuxserver/kasm:latest
-    container_name: kasm
-    privileged: true
-    environment:
-      - KASM_PORT=8443
-    volumes:
-      - ./data/kasm:/opt          # KASM data, workspace images, DB
-      - ./data/profiles:/profiles  # optional persistent user profiles
-    ports:
-      - "3000:3000"   # setup wizard
-      - "8443:8443"   # main portal
-    restart: unless-stopped
-
-  # ── CI/CD Webhook ──────────────────────────
-  # Receives GitHub push webhooks → runs git pull → optionally rebuilds
-  # workspace images. Provides a simple status page at :8080.
-  # KASM itself is NOT controlled from here — manage workspaces via
-  # the KASM admin panel at https://<ip>:8443.
-  webhook:
-    build: ./webhook
+  # ── Launcher ───────────────────────────────
+  launcher:
+    build: ./launcher
     restart: unless-stopped
     ports:
       - "8080:3000"
     volumes:
-      - .:/repo                   # repo root for git pull
-      - /var/run/docker.sock:/var/run/docker.sock  # to rebuild workspace images
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./apps.config.json:/app/apps.config.json:ro
+      - .:/repo
     environment:
       WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
-      KASM_URL: "https://${HOST_IP:-localhost}:8443"
+      COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
       GIT_DIR: /repo
+
+  # ── Full Desktop ────────────────────────────
+  # Pre-built kasmweb image — full XFCE desktop with browser, terminal, etc.
+  # No custom Dockerfile needed.
+  desktop:
+    image: kasmweb/ubuntu-jammy-desktop:latest
+    restart: unless-stopped
+    ports:
+      - "6901:6901"
+    environment:
+      VNC_PW: "${KASM_PASSWORD:-password}"
+    shm_size: "512mb"
+
+  # ── Claude Code terminal ────────────────────
+  # Custom workspace image with Node 20 + Claude Code pre-installed.
+  # Build: docker compose build claude-code
+  claude-code:
+    build: ./workspaces/claude-code
+    restart: unless-stopped
+    ports:
+      - "6902:6901"
+    environment:
+      VNC_PW: "${KASM_PASSWORD:-password}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    volumes:
+      - ./workspace:/home/kasm-user/workspace
+    shm_size: "512mb"
