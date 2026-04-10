@@ -1,17 +1,9 @@
-# Claude Code — KASM Workspace Image
+# Claude Code — KASM Workspace Image (standalone mode)
 #
-# Streams a terminal running Claude Code via the KASM platform.
-# Register this image in KASM admin panel → Workspaces → Add Workspace.
-#
-# Build:
-#   docker build -t claude-code-workspace .
-#
-# Test standalone (no KASM install needed):
-#   docker run --rm -it --shm-size=512m -p 6901:6901 \
-#     -e VNC_PW=password \
-#     -e ANTHROPIC_API_KEY=sk-ant-... \
-#     claude-code-workspace
-#   → open https://localhost:6901  (user: kasm_user  password: password)
+# Run standalone (no KASM platform needed):
+#   docker compose up -d --build claude-code
+#   Open https://<ip>:6902
+#   Username: kasm_user   Password: value of KASM_PASSWORD in .env
 
 ARG BASE_TAG="latest"
 ARG BASE_IMAGE="core-ubuntu-jammy"
@@ -22,25 +14,23 @@ ENV HOME=/home/kasm-default-profile
 ENV STARTUPDIR=/dockerstartup
 WORKDIR $HOME
 
-# Install Node.js 20, git, and Claude Code
+# Install Node.js 20 + git + Claude Code
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    ca-certificates \
+    curl git ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @anthropic-ai/claude-code
 
-# Workspace directory (persistent if KASM profile storage is configured)
+# Workspace dir — mounted via docker-compose volume
 RUN mkdir -p $HOME/workspace && chown 1000:1000 $HOME/workspace
 
-# Startup script — launches terminal with claude on session start
+# Auto-start: open terminal with claude on session launch
 COPY custom_startup.sh $STARTUPDIR/custom_startup.sh
 RUN chmod 755 $STARTUPDIR/custom_startup.sh
 
-# Single-app XFCE layout: no taskbar, minimal chrome, app fills screen
+# Single-app XFCE layout (no taskbar)
 RUN cp $HOME/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/* \
        $HOME/.config/xfce4/xfconf/xfce-perchannel-xml/ \
     && apt-get remove -y xfce4-panel 2>/dev/null || true
