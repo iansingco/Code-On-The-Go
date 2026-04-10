@@ -1,25 +1,21 @@
 # ─────────────────────────────────────────────
-# KASM Standalone Streaming Setup
+# Streaming Launcher
 #
-# Runs kasmweb workspace images directly — no KASM platform needed.
-# Each container has KasmVNC built in and streams over HTTPS to a browser tab.
-# Works on Docker Desktop for Windows (no Docker-in-Docker required).
+# Only the launcher runs via docker-compose.
+# All workspace containers (kasmweb apps) are started/stopped/rebuilt
+# dynamically by the launcher from apps.config.json — no docker-compose
+# changes needed when adding a new app.
 #
-# Access each stream at https://<ip>:<port>
-#   Login: kasm_user / <KASM_PASSWORD from .env>
+# To add a new app:
+#   1. Add an entry to apps.config.json
+#   2. Hit Start in the launcher UI at http://<ip>:8080
 #
 # Ports:
-#   8080  — Launcher UI (start/stop/open all apps)
-#   6901  — Claude Code (full desktop + Claude Code CLI pre-installed)
-#
-# To add more apps:
-#   1. Add a service below (copy the claude-code block, bump the host port)
-#   2. Add an entry in apps.config.json
+#   8080  — Launcher UI + CI/CD webhook
+#   6901+ — Workspace streams (assigned per app in apps.config.json)
 # ─────────────────────────────────────────────
 
 services:
-
-  # ── Launcher ───────────────────────────────
   launcher:
     build: ./launcher
     restart: unless-stopped
@@ -31,33 +27,10 @@ services:
       - .:/repo
     environment:
       WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
-      COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
+      KASM_PASSWORD: "${KASM_PASSWORD:-password}"
+      # HOST_REPO_PATH must be the absolute path to this streaming/ directory
+      # on the HOST machine (used when mounting workspace volumes into app containers).
+      # On Windows: C:\Users\you\Documents\GitHub\Code-On-The-Go\streaming
+      # On Linux/Mac: /home/you/Code-On-The-Go/streaming
+      HOST_REPO_PATH: "${HOST_REPO_PATH}"
       GIT_DIR: /repo
-
-  # ── Claude Code ────────────────────────────
-  # Full XFCE desktop with Claude Code CLI, Cursor IDE, Gemini CLI
-  # pre-installed. Set ANTHROPIC_API_KEY in .env before launching.
-  # Open stream at https://<ip>:6901  —  login: kasm_user / KASM_PASSWORD
-  claude-code:
-    image: kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily
-    restart: unless-stopped
-    ports:
-      - "6901:6901"
-    environment:
-      VNC_PW: "${KASM_PASSWORD:-password}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-    volumes:
-      - ./workspace:/home/kasm-user/workspace
-    shm_size: "512mb"
-
-  # ── Add more apps here ──────────────────────
-  # Example — plain desktop (no AI tools):
-  #
-  # desktop:
-  #   image: kasmweb/ubuntu-jammy-desktop:1.18.0-rolling-daily
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6902:6901"
-  #   environment:
-  #     VNC_PW: "${KASM_PASSWORD:-password}"
-  #   shm_size: "512mb"

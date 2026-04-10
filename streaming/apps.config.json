@@ -5,6 +5,10 @@
     "port": 6901,
     "icon": "🤖",
     "description": "Full desktop + Claude Code, Cursor, Gemini CLI",
-    "autorestart": true
+    "image": "kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily",
+    "workspace": "workspace",
+    "env": ["ANTHROPIC_API_KEY"],
+    "autorestart": true,
+    "rebuildTriggers": []
   }
 ]
