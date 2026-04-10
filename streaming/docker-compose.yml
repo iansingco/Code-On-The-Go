@@ -10,13 +10,11 @@
 #
 # Ports:
 #   8080  — Launcher UI (start/stop/open all apps)
-#   6901  — Desktop (full XFCE Linux desktop)
-#   6902  — Claude Code terminal
+#   6901  — Claude Code (full desktop + Claude Code CLI pre-installed)
 #
-# To add a new app:
-#   1. Add a service below (copy a block, bump the host port)
+# To add more apps:
+#   1. Add a service below (copy the claude-code block, bump the host port)
 #   2. Add an entry in apps.config.json
-#   3. Optionally create a custom image in workspaces/<name>/
 # ─────────────────────────────────────────────
 
 services:
@@ -36,30 +34,30 @@ services:
       COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
       GIT_DIR: /repo
 
-  # ── Full Desktop ────────────────────────────
-  # Pre-built kasmweb image — full XFCE desktop with browser, terminal, etc.
-  # No custom Dockerfile needed.
-  desktop:
-    image: kasmweb/ubuntu-jammy-desktop:1.18.0-rolling-daily
-    restart: unless-stopped
-    ports:
-      - "6901:6901"
-    environment:
-      VNC_PW: "${KASM_PASSWORD:-password}"
-    shm_size: "512mb"
-
-  # ── Claude Code terminal ────────────────────
-  # kasmweb/ubuntu-jammy-desktop-ai-dev already includes Claude Code CLI,
-  # Cursor IDE, Gemini CLI, and Codex CLI — no custom build needed.
-  # Set ANTHROPIC_API_KEY in .env before launching.
+  # ── Claude Code ────────────────────────────
+  # Full XFCE desktop with Claude Code CLI, Cursor IDE, Gemini CLI
+  # pre-installed. Set ANTHROPIC_API_KEY in .env before launching.
+  # Open stream at https://<ip>:6901  —  login: kasm_user / KASM_PASSWORD
   claude-code:
     image: kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily
     restart: unless-stopped
     ports:
-      - "6902:6901"
+      - "6901:6901"
     environment:
       VNC_PW: "${KASM_PASSWORD:-password}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     volumes:
       - ./workspace:/home/kasm-user/workspace
     shm_size: "512mb"
+
+  # ── Add more apps here ──────────────────────
+  # Example — plain desktop (no AI tools):
+  #
+  # desktop:
+  #   image: kasmweb/ubuntu-jammy-desktop:1.18.0-rolling-daily
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6902:6901"
+  #   environment:
+  #     VNC_PW: "${KASM_PASSWORD:-password}"
+  #   shm_size: "512mb"
