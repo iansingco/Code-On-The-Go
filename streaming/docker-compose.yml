@@ -31,8 +31,6 @@ services:
     image: lscr.io/linuxserver/kasm:latest
     container_name: kasm
     privileged: true
-    security_opt:
-      - apparmor:rootlesskit
     environment:
       - KASM_PORT=8443
     volumes:
