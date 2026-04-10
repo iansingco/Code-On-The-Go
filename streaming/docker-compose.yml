@@ -40,7 +40,7 @@ services:
   # Pre-built kasmweb image — full XFCE desktop with browser, terminal, etc.
   # No custom Dockerfile needed.
   desktop:
-    image: kasmweb/ubuntu-jammy-desktop:1.17.0-rolling-daily
+    image: kasmweb/ubuntu-jammy-desktop:1.18.0-rolling-daily
     restart: unless-stopped
     ports:
       - "6901:6901"
@@ -53,7 +53,7 @@ services:
   # Cursor IDE, Gemini CLI, and Codex CLI — no custom build needed.
   # Set ANTHROPIC_API_KEY in .env before launching.
   claude-code:
-    image: kasmweb/ubuntu-jammy-desktop-ai-dev:1.17.0-rolling-daily
+    image: kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily
     restart: unless-stopped
     ports:
       - "6902:6901"
