@@ -1,123 +1,64 @@
 version: "3.8"
 
 # ─────────────────────────────────────────────
-# Generic Neko Streaming Launcher
+# KASM Workspaces — Generic Streaming Setup
 #
-# Each app streams a full desktop/terminal to a browser tab via WebRTC (neko).
-# The launcher at :8080 lets you start/stop/open any app from your phone.
-# Access everything over Tailscale — no port-forwarding needed.
+# KASM replaces the custom launcher. It provides:
+#   - Its own web portal (start sessions, pick workspaces)
+#   - User account management
+#   - Per-session disposable containers
+#   - Built-in streaming (KasmVNC over HTTPS)
 #
 # Ports:
-#   8080  — Launcher UI
-#   8081  — claude-code stream
-#   8082  — godot-game stream (enable with: docker compose --profile godot up)
-#   8083  — full XFCE desktop stream
-#   8084  — calculator (single-app example)
+#   3000  — First-time setup wizard (only needed once)
+#   8443  — Main KASM portal (use this day-to-day)
+#   8080  — Webhook receiver for CI/CD git deploys
 #
-# To add a new app:
-#   1. Add an entry in apps.config.json
-#   2. Add a service below (copy the claude-code block, bump ports/EPR range)
-#   3. Create apps/<name>/Dockerfile
+# First run:
+#   1. docker compose up -d
+#   2. Open https://<ip>:3000 to run the setup wizard
+#   3. After setup, use https://<ip>:8443 for everything
+#
+# Adding workspaces:
+#   Build a workspace image (see workspaces/) then register it in
+#   KASM admin panel → Workspaces → Add Workspace → Docker image name.
 # ─────────────────────────────────────────────
 
 services:
 
-  # ── Launcher ───────────────────────────────
-  launcher:
-    build: ./launcher
+  # ── KASM Platform ──────────────────────────
+  # Single container that runs the full KASM stack (Docker-in-Docker).
+  # It manages its own internal Docker daemon to spin up workspace sessions.
+  kasm:
+    image: lscr.io/linuxserver/kasm:latest
+    container_name: kasm
+    privileged: true
+    security_opt:
+      - apparmor:rootlesskit
+    environment:
+      - KASM_PORT=8443
+    volumes:
+      - ./data/kasm:/opt          # KASM data, workspace images, DB
+      - ./data/profiles:/profiles  # optional persistent user profiles
+    ports:
+      - "3000:3000"   # setup wizard
+      - "8443:8443"   # main portal
+    restart: unless-stopped
+
+  # ── CI/CD Webhook ──────────────────────────
+  # Receives GitHub push webhooks → runs git pull → optionally rebuilds
+  # workspace images. Provides a simple status page at :8080.
+  # KASM itself is NOT controlled from here — manage workspaces via
+  # the KASM admin panel at https://<ip>:8443.
+  webhook:
+    build: ./webhook
     restart: unless-stopped
     ports:
       - "8080:3000"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./apps.config.json:/app/apps.config.json:ro
-      - .:/repo                              # repo root — used for git pull on webhook
+      - .:/repo                   # repo root for git pull
+      - /var/run/docker.sock:/var/run/docker.sock  # to rebuild workspace images
     environment:
       WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
-      COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
+      KASM_URL: "https://${HOST_IP:-localhost}:8443"
       GIT_DIR: /repo
-
-  # ── Claude Code terminal ────────────────────
-  # Stream a terminal running Claude Code directly to your phone browser.
-  # Mount your project workspace at ./workspace or point the volume elsewhere.
-  claude-code:
-    build: ./apps/claude-code
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-      - "52000-52100:52000-52100/udp"
-    environment:
-      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
-      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
-      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
-      NEKO_EPR: "52000-52100"
-      NEKO_ICELITE: "true"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-    volumes:
-      - ./workspace:/workspace
-    cap_add:
-      - SYS_ADMIN
-    shm_size: "2gb"
-
-  # ── Godot Game (optional) ───────────────────
-  # Enable with: docker compose --profile godot up -d
-  # Or set COMPOSE_PROFILES=godot in .env
-  godot-game:
-    build: ./apps/godot-game
-    restart: unless-stopped
-    profiles:
-      - godot
-    ports:
-      - "8082:8080"
-      - "52200-52300:52200-52300/udp"
-    environment:
-      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
-      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
-      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
-      NEKO_EPR: "52200-52300"
-      NEKO_ICELITE: "true"
-      NEKO_APP: "/bin/bash -c 'godot --path /app/game 2>/dev/null'"
-    volumes:
-      - ./apps/godot-game/project:/app/game
-    cap_add:
-      - SYS_ADMIN
-    shm_size: "2gb"
-
-  # ── Full virtual desktop (XFCE) ─────────────────
-  # Streams a complete Linux desktop to your browser — file manager, terminal,
-  # browser, etc. This is NOT your Windows screen; it's a virtual Linux desktop
-  # running inside the container. Great for a general-purpose remote workspace.
-  desktop:
-    image: ghcr.io/m1k1o/neko/xfce:latest
-    restart: unless-stopped
-    ports:
-      - "8083:8080"
-      - "52400-52500:52400-52500/udp"
-    environment:
-      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
-      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
-      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
-      NEKO_EPR: "52400-52500"
-      NEKO_ICELITE: "true"
-    cap_add:
-      - SYS_ADMIN
-    shm_size: "2gb"
-
-  # ── Single app: Calculator ───────────────────────
-  # Streams just one app fullscreen — no desktop chrome, no taskbar.
-  # Template for any single Linux GUI app: swap NEKO_APP and the apt install.
-  calculator:
-    build: ./apps/calculator
-    restart: unless-stopped
-    ports:
-      - "8084:8080"
-      - "52600-52700:52600-52700/udp"
-    environment:
-      NEKO_SCREEN: "${NEKO_SCREEN:-1280x720@30}"
-      NEKO_PASSWORD: "${NEKO_PASSWORD:-stream}"
-      NEKO_PASSWORD_ADMIN: "${NEKO_PASSWORD_ADMIN:-admin}"
-      NEKO_EPR: "52600-52700"
-      NEKO_ICELITE: "true"
-    cap_add:
-      - SYS_ADMIN
-    shm_size: "2gb"
