@@ -10,5 +10,17 @@
     "env": ["ANTHROPIC_API_KEY"],
     "autorestart": true,
     "rebuildTriggers": []
+  },
+  {
+    "id": "speedreader",
+    "label": "SpeedReader",
+    "port": 6902,
+    "icon": "📖",
+    "description": "React Native/Expo — VS Code + npm run web to preview",
+    "dockerfile": "workspaces/speedreader",
+    "workspace": "repos/SpeedReader",
+    "env": [],
+    "autorestart": false,
+    "rebuildTriggers": ["package.json"]
   }
 ]
