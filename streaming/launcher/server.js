@@ -73,10 +73,12 @@ function resolveWorkspacePath(workspace) {
   return path.join(GIT_DIR, workspace);
 }
 
-// Resolve Dockerfile build context path similarly.
+// Resolve Dockerfile build context path.
+// Always uses the container-internal /repo path — docker build sends the context
+// from the launcher container (which has the repo mounted at GIT_DIR) to the
+// Docker daemon. HOST_REPO_PATH is only needed for -v flags in docker run.
 function resolveDockerfilePath(dockerfile) {
   if (!dockerfile) return null;
-  if (HOST_REPO_PATH) return path.join(HOST_REPO_PATH, dockerfile).replace(/\\/g, "/");
   return path.join(GIT_DIR, dockerfile);
 }
 
