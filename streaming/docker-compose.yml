@@ -1,27 +1,8 @@
-# ─────────────────────────────────────────────
-# KASM Standalone Streaming Setup
-#
-# Runs kasmweb workspace images directly — no KASM platform needed.
-# Each container has KasmVNC built in and streams over HTTPS to a browser tab.
-# Works on Docker Desktop for Windows (no Docker-in-Docker required).
-#
-# Access each stream at https://<ip>:<port>
-#   Login: kasm_user / <KASM_PASSWORD from .env>
-#
-# Ports:
-#   8080  — Launcher UI (start/stop/open all apps)
-#   6901  — Desktop (full XFCE Linux desktop)
-#   6902  — Claude Code terminal
-#
-# To add a new app:
-#   1. Add a service below (copy a block, bump the host port)
-#   2. Add an entry in apps.config.json
-#   3. Optionally create a custom image in workspaces/<name>/
-# ─────────────────────────────────────────────
-
 services:
 
-  # ── Launcher ───────────────────────────────
+  # ── Launcher ───────────────────────────────────────────────────────────────
+  # Manages all workspace containers dynamically from apps.config.json.
+  # Access at http://<host>:8080
   launcher:
     build: ./launcher
     restart: unless-stopped
@@ -33,33 +14,7 @@ services:
       - .:/repo
     environment:
       WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
-      COMPOSE_PROJECT: "${COMPOSE_PROJECT:-streaming}"
-      GIT_DIR: /repo
-
-  # ── Full Desktop ────────────────────────────
-  # Pre-built kasmweb image — full XFCE desktop with browser, terminal, etc.
-  # No custom Dockerfile needed.
-  desktop:
-    image: kasmweb/ubuntu-jammy-desktop:1.18.0-rolling-daily
-    restart: unless-stopped
-    ports:
-      - "6901:6901"
-    environment:
-      VNC_PW: "${KASM_PASSWORD:-password}"
-    shm_size: "512mb"
-
-  # ── Claude Code terminal ────────────────────
-  # kasmweb/ubuntu-jammy-desktop-ai-dev already includes Claude Code CLI,
-  # Cursor IDE, Gemini CLI, and Codex CLI — no custom build needed.
-  # Set ANTHROPIC_API_KEY in .env before launching.
-  claude-code:
-    image: kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily
-    restart: unless-stopped
-    ports:
-      - "6902:6901"
-    environment:
-      VNC_PW: "${KASM_PASSWORD:-password}"
+      KASM_PASSWORD: "${KASM_PASSWORD:-password}"
+      HOST_REPO_PATH: "${HOST_REPO_PATH}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-    volumes:
-      - ./workspace:/home/kasm-user/workspace
-    shm_size: "512mb"
+      GIT_DIR: /repo
