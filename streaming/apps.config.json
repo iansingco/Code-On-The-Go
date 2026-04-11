@@ -1,17 +1,38 @@
 [
   {
-    "id": "desktop",
-    "label": "Virtual Desktop",
-    "port": 6901,
-    "icon": "🖥️",
-    "description": "Full XFCE Linux desktop"
-  },
-  {
     "id": "claude-code",
     "label": "Claude Code",
-    "port": 6902,
+    "port": 6901,
     "icon": "🤖",
-    "description": "Terminal with Claude Code — mobile CI/CD",
-    "autorestart": true
+    "description": "Full desktop + Claude Code, Cursor, Gemini CLI",
+    "image": "kasmweb/ubuntu-jammy-desktop-ai-dev:1.18.0-rolling-daily",
+    "workspace": "workspace",
+    "env": ["ANTHROPIC_API_KEY"],
+    "autorestart": true,
+    "rebuildTriggers": []
+  },
+  {
+    "id": "speedreader",
+    "label": "SpeedReader",
+    "port": 6902,
+    "icon": "📖",
+    "description": "Expo web preview — Chromium fullscreen, no VS Code",
+    "dockerfile": "workspaces/speedreader",
+    "workspace": "repos/SpeedReader",
+    "env": [],
+    "autorestart": false,
+    "rebuildTriggers": ["package.json"]
+  },
+  {
+    "id": "speedreader-full",
+    "label": "SpeedReader FULL",
+    "port": 6903,
+    "icon": "📖",
+    "description": "React Native/Expo — VS Code + npm run web to preview",
+    "dockerfile": "workspaces/speedreader-full",
+    "workspace": "repos/SpeedReader",
+    "env": [],
+    "autorestart": false,
+    "rebuildTriggers": ["package.json"]
   }
 ]
