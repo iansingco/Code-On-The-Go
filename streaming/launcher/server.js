@@ -135,7 +135,7 @@ async function containerRebuild(app, onProgress) {
   onProgress(`Building ${tag} from ${ctx}...`);
 
   await new Promise((resolve, reject) => {
-    const proc = spawn("docker", ["build", "--progress=plain", "-t", tag, ctx]);
+    const proc = spawn("docker", ["build", "-t", tag, ctx]);
     const pipe = (data) =>
       data.toString().split("\n").filter(l => l.trim()).forEach(l => onProgress(l));
     proc.stdout.on("data", pipe);
