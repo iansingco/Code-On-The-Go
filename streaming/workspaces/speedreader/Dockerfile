@@ -6,7 +6,7 @@
 # The startup script runs: npm run web  and opens Chromium to localhost:8081.
 
 ARG BASE_TAG="1.18.0-rolling-daily"
-FROM kasmweb/core-ubuntu-jammy:$BASE_TAG
+FROM kasmweb/vs-code:$BASE_TAG
 USER root
 
 ENV HOME=/home/kasm-default-profile
