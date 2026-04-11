@@ -39,6 +39,14 @@ function loadApps() {
 
 function containerName(id) { return `streaming-${id}`; }
 
+// Returns true if the custom image has been built at least once.
+function imageExists(id) {
+  try {
+    execSync(`docker image inspect ${customImageTag(id)} 2>/dev/null`);
+    return true;
+  } catch { return false; }
+}
+
 function containerStatus(id) {
   try {
     const out = execSync(
@@ -165,6 +173,7 @@ app.get("/api/apps", (req, res) => {
     status: containerStatus(a.id),
     startedAt: containerStartedAt(a.id),
     rebuildable: !!a.dockerfile,
+    imageReady: a.dockerfile ? imageExists(a.id) : true,
   })));
 });
 

@@ -210,11 +210,15 @@ function renderCards(apps) {
       actionBtns = `<button class="btn btn-loading" disabled>${s.building ? "Building…" : "…"}</button>`;
     } else if (running) {
       actionBtns = `<button class="btn btn-stop" onclick="toggleApp('${app.id}','stop')">Stop</button>`;
+    } else if (!app.imageReady) {
+      // Custom dockerfile but image hasn't been built yet — Rebuild builds + starts automatically
+      actionBtns = `<button class="btn btn-rebuild" onclick="rebuild('${app.id}')">Build &amp; Start</button>`;
     } else {
       actionBtns = `<button class="btn btn-start" onclick="toggleApp('${app.id}','start')">Start</button>`;
     }
 
-    const rebuildBtn = app.rebuildable && !s.busy && !s.building
+    // Only show separate Rebuild button when the image is already built (running or stopped)
+    const rebuildBtn = app.rebuildable && app.imageReady && !s.busy && !s.building
       ? `<button class="btn btn-rebuild" onclick="rebuild('${app.id}')">Rebuild</button>`
       : "";
 
