@@ -1,5 +1,5 @@
 const express = require("express");
-const { execSync, exec } = require("child_process");
+const { execSync, spawn } = require("child_process");
 const { createHmac, timingSafeEqual } = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -127,16 +127,26 @@ function containerStart(app) {
 }
 
 // Rebuild a custom dockerfile app image, then restart its container.
-function containerRebuild(app, onProgress) {
+// onProgress receives each line of docker build output in real time.
+async function containerRebuild(app, onProgress) {
   if (!app.dockerfile) throw new Error("App has no dockerfile — nothing to rebuild");
   const tag = customImageTag(app.id);
   const ctx = resolveDockerfilePath(app.dockerfile);
   onProgress(`Building ${tag} from ${ctx}...`);
-  execSync(`docker build -t ${tag} "${ctx}"`, { timeout: 300000 });
-  onProgress("Build complete. Restarting container...");
-  // Remove old container so docker run picks up the new image
+
+  await new Promise((resolve, reject) => {
+    const proc = spawn("docker", ["build", "--progress=plain", "-t", tag, ctx]);
+    const pipe = (data) =>
+      data.toString().split("\n").filter(l => l.trim()).forEach(l => onProgress(l));
+    proc.stdout.on("data", pipe);
+    proc.stderr.on("data", pipe);
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`docker build failed (exit ${code})`)));
+    proc.on("error", reject);
+  });
+
+  onProgress("Build complete — restarting container...");
   try { execSync(`docker stop ${containerName(app.id)} 2>/dev/null`); } catch {}
-  try { execSync(`docker rm ${containerName(app.id)} 2>/dev/null`); } catch {}
+  try { execSync(`docker rm   ${containerName(app.id)} 2>/dev/null`); } catch {}
   containerStart(app);
   onProgress("Done.");
 }
@@ -194,7 +204,7 @@ app.post("/api/apps/:id/stop", (req, res) => {
 });
 
 // Rebuild triggers a docker build + container restart (async, streams log via SSE).
-app.get("/api/apps/:id/rebuild", (req, res) => {
+app.get("/api/apps/:id/rebuild", async (req, res) => {
   const app = loadApps().find(a => a.id === req.params.id);
   if (!app) return res.status(404).json({ error: "Unknown app" });
   if (!app.dockerfile) return res.status(400).json({ error: "No dockerfile configured" });
@@ -210,7 +220,7 @@ app.get("/api/apps/:id/rebuild", (req, res) => {
   };
 
   try {
-    containerRebuild(app, send);
+    await containerRebuild(app, send);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
   } catch (e) {
     res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
@@ -243,7 +253,7 @@ app.post("/api/clone", (req, res) => {
 
 // ── CI/CD Webhook ─────────────────────────────────────────────────────────────
 
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   if (WEBHOOK_SECRET) {
     const sig = req.headers["x-hub-signature-256"];
     if (!sig) return res.status(401).json({ error: "Missing signature" });
@@ -285,7 +295,7 @@ app.post("/webhook", (req, res) => {
 
     if (needsRebuild) {
       try {
-        containerRebuild(app, msg => console.log(`[rebuild:${app.id}]`, msg));
+        await containerRebuild(app, msg => console.log(`[rebuild:${app.id}]`, msg));
         rebuilt.push(app.id);
       } catch (e) {
         console.error(`[rebuild:${app.id}] failed:`, e.message);
