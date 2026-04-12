@@ -12,6 +12,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./apps.config.json:/app/apps.config.json:ro
       - .:/repo
+      # Mount source files so nodemon picks up git pull without a rebuild.
+      # node_modules stays inside the container (not overwritten by the mount).
+      - ./launcher/server.js:/app/server.js
+      - ./launcher/public:/app/public
     environment:
       WEBHOOK_SECRET: "${WEBHOOK_SECRET:-changeme}"
       KASM_PASSWORD: "${KASM_PASSWORD:-password}"
