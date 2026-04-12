@@ -177,6 +177,66 @@ function detectStack(repoPath) {
   return "Unknown";
 }
 
+// Pick a pre-built kasmweb image for a stack — no rebuild needed to get started.
+const KASM_TAG = "1.18.0-rolling-daily";
+function defaultImageForStack(stack) {
+  // VS Code works for everything as a starting point
+  return `kasmweb/vs-code:${KASM_TAG}`;
+}
+
+const STACK_ICONS = { "Node.js":"⬡", "Godot":"🎮", "Python":"🐍", "Rust":"🦀", "Go":"🐹", "Java/Maven":"☕", "Java/Gradle":"☕" };
+function stackIcon(stack) { return STACK_ICONS[stack] || "📦"; }
+
+// Find the next port not already used in apps.config.json.
+function findNextPort() {
+  const used = new Set(loadApps().map(a => a.port));
+  let p = 6901;
+  while (used.has(p)) p++;
+  return p;
+}
+
+// Read key names from a .env.example file in a repo (values stripped).
+function readEnvExample(repoPath) {
+  const f = path.join(repoPath, ".env.example");
+  if (!fs.existsSync(f)) return [];
+  return fs.readFileSync(f, "utf8")
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith("#"))
+    .map(l => l.split("=")[0].trim())
+    .filter(Boolean);
+}
+
+// Parse the host .env file into a key→value map.
+function readHostEnv() {
+  const f = path.join(GIT_DIR, ".env");
+  if (!fs.existsSync(f)) return {};
+  return Object.fromEntries(
+    fs.readFileSync(f, "utf8").split("\n")
+      .map(l => l.trim()).filter(l => l && !l.startsWith("#"))
+      .map(l => { const i = l.indexOf("="); return [l.slice(0,i), l.slice(i+1)]; })
+      .filter(([k]) => k)
+  );
+}
+
+// Write/update keys in the host .env file.
+function writeHostEnv(updates) {
+  const f = path.join(GIT_DIR, ".env");
+  const existing = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
+  const lines = existing.split("\n");
+  for (const [key, val] of Object.entries(updates)) {
+    const idx = lines.findIndex(l => l.startsWith(key + "=") || l.startsWith(key + " ="));
+    const line = `${key}=${val}`;
+    if (idx >= 0) lines[idx] = line; else lines.push(line);
+  }
+  fs.writeFileSync(f, lines.join("\n").trimEnd() + "\n");
+}
+
+// Write apps.config.json back to disk (via /repo which is the writable mount).
+function saveApps(apps) {
+  fs.writeFileSync(path.join(GIT_DIR, "apps.config.json"), JSON.stringify(apps, null, 2) + "\n");
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 app.get("/api/apps", (req, res) => {
@@ -230,13 +290,14 @@ app.get("/api/apps/:id/rebuild", async (req, res) => {
 
 app.get("/api/deploy/log", (req, res) => res.json(deployLog));
 
-// Clone a git repo into /repo/repos/<name>
+// Clone a repo and auto-register it in apps.config.json.
+// No rebuild needed — uses a pre-built kasmweb image by default.
 app.post("/api/clone", (req, res) => {
   const { url } = req.body;
   if (!url || typeof url !== "string") return res.status(400).json({ error: "url required" });
 
-  // Derive repo name from URL (strip .git suffix)
   const name = path.basename(url, ".git").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const id   = name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   const dest = path.join(GIT_DIR, "repos", name);
 
   if (fs.existsSync(dest)) return res.status(409).json({ error: `Already exists at repos/${name}` });
@@ -244,8 +305,52 @@ app.post("/api/clone", (req, res) => {
   try {
     fs.mkdirSync(path.join(GIT_DIR, "repos"), { recursive: true });
     execSync(`git clone "${url}" "${dest}"`, { timeout: 120000 });
-    const stack = detectStack(dest);
-    res.json({ ok: true, name, path: `repos/${name}`, stack });
+
+    const stack   = detectStack(dest);
+    const envKeys = readEnvExample(dest);  // keys from .env.example if present
+
+    // Auto-register in apps.config.json if not already there
+    const apps = loadApps();
+    if (!apps.find(a => a.id === id)) {
+      apps.push({
+        id,
+        label: name,
+        port: findNextPort(),
+        icon: stackIcon(stack),
+        description: `${stack} — VS Code workspace`,
+        image: defaultImageForStack(stack),
+        workspace: `repos/${name}`,
+        env: envKeys,          // pass these from .env into the container
+        autorestart: false,
+        rebuildTriggers: [],
+      });
+      saveApps(apps);
+    }
+
+    res.json({ ok: true, id, name, path: `repos/${name}`, stack, envKeys });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Return env vars needed by an app and their current values in .env.
+app.get("/api/apps/:id/envvars", (req, res) => {
+  const app = loadApps().find(a => a.id === req.params.id);
+  if (!app) return res.status(404).json({ error: "Unknown app" });
+  const current = readHostEnv();
+  const vars = (app.env || []).map(k => ({ key: k, value: current[k] || "" }));
+  res.json(vars);
+});
+
+// Write env var values into the host .env file.
+app.post("/api/apps/:id/envvars", (req, res) => {
+  const app = loadApps().find(a => a.id === req.params.id);
+  if (!app) return res.status(404).json({ error: "Unknown app" });
+  const updates = req.body; // { KEY: "value", ... }
+  if (typeof updates !== "object") return res.status(400).json({ error: "expected object" });
+  try {
+    writeHostEnv(updates);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
