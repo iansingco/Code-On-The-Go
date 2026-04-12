@@ -116,9 +116,19 @@
     .btn-term-toggle { background:none; border:none; color:var(--muted); font-size:.75rem;
       cursor:pointer; padding:2px 6px; border-radius:6px; }
     .btn-term-toggle:hover { background:var(--border); color:var(--text); }
-    #terminal-body { padding:8px; display:none; }
+    #terminal-body { display:none; }
     #terminal-body.open { display:block; }
+    #xterm-container { padding:8px; }
     .xterm-viewport { border-radius:0 !important; }
+    /* Mobile-friendly command bar — regular input triggers phone keyboard */
+    .cmd-bar { display:flex; gap:0; border-top:1px solid var(--border); }
+    .cmd-input { flex:1; background:#0a0a0a; border:none; color:var(--text);
+      font-family:monospace; font-size:.85rem; padding:10px 12px; outline:none;
+      -webkit-appearance:none; }
+    .cmd-input::placeholder { color:#444; }
+    .cmd-send { background:var(--accent); color:#fff; border:none; padding:10px 16px;
+      font-size:.8rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .cmd-send:active { opacity:.8; }
   </style>
 </head>
 <body>
@@ -156,6 +166,13 @@
     </div>
     <div id="terminal-body">
       <div id="xterm-container"></div>
+      <!-- Command bar: plain <input> so the phone keyboard appears on tap -->
+      <div class="cmd-bar">
+        <input class="cmd-input" id="cmd-input" type="text" inputmode="text"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="command…">
+        <button class="cmd-send" onclick="sendCmd()">Send</button>
+      </div>
     </div>
   </div>
 
@@ -361,6 +378,30 @@ function initTerminal() {
       termWs.send(JSON.stringify({ type: "resize", cols, rows }));
   });
 }
+
+// Send command from the mobile-friendly input bar
+function sendCmd() {
+  const input = document.getElementById("cmd-input");
+  const cmd = input.value;
+  input.value = "";
+  if (!termWs || termWs.readyState !== WebSocket.OPEN) {
+    // Terminal not open yet — open it first, then send
+    if (!termOpen) toggleTerminal();
+    setTimeout(() => sendCmd._send(cmd), 500);
+    return;
+  }
+  sendCmd._send(cmd);
+}
+sendCmd._send = (cmd) => {
+  if (termWs && termWs.readyState === WebSocket.OPEN)
+    termWs.send(JSON.stringify({ type: "input", data: cmd + "\n" }));
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("cmd-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); sendCmd(); }
+  });
+});
 
 function toggleTerminal() {
   const body = document.getElementById("terminal-body");
