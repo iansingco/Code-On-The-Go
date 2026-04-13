@@ -7,3 +7,4 @@ Dockerfile  text eol=lf
 *.json      text eol=lf
 *.js        text eol=lf
 *.html      text eol=lf
+*.desktop   text eol=lf

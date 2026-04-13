@@ -21,10 +21,10 @@ RUN npm install -g expo-cli
 COPY custom_startup.sh $STARTUPDIR/custom_startup.sh
 RUN chmod 755 $STARTUPDIR/custom_startup.sh
 
-# XFCE autostart — called by the window manager after desktop is ready.
-# More reliable than custom_startup.sh in standalone (non-platform) mode.
-RUN mkdir -p $HOME/.config/autostart
-COPY app-startup.desktop $HOME/.config/autostart/speedreader.desktop
+# System-wide XFCE autostart — /etc/xdg/autostart is read by XFCE for all
+# users and does not depend on KASM's user-profile copy mechanism.
+RUN mkdir -p /etc/xdg/autostart
+COPY app-startup.desktop /etc/xdg/autostart/speedreader.desktop
 
 RUN chown 1000:0 $HOME
 RUN $STARTUPDIR/set_user_permission.sh $HOME
