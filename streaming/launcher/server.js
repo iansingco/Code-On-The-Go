@@ -312,6 +312,8 @@ app.post("/api/clone", (req, res) => {
     // Auto-register in apps.config.json if not already there
     const apps = loadApps();
     if (!apps.find(a => a.id === id)) {
+      // Extract "owner/repo" from the clone URL for webhook routing
+      const githubRepo = url.replace(/\.git$/, "").replace(/^https?:\/\/github\.com\//, "");
       apps.push({
         id,
         label: name,
@@ -320,7 +322,8 @@ app.post("/api/clone", (req, res) => {
         description: `${stack} — VS Code workspace`,
         image: defaultImageForStack(stack),
         workspace: `repos/${name}`,
-        env: envKeys,          // pass these from .env into the container
+        repo: githubRepo,      // used by webhook to route pushes to this project
+        env: envKeys,
         autorestart: false,
         rebuildTriggers: [],
       });
@@ -381,35 +384,57 @@ app.post("/webhook", async (req, res) => {
 
   console.log(`[webhook] ${repo}@${branch} by ${pusher}: ${commitMsg}`);
 
-  // Pull latest
-  let pullOutput = "";
-  try { pullOutput = execSync(`git -C ${GIT_DIR} pull`, { timeout: 30000 }).toString().trim(); }
-  catch (e) { pullOutput = `FAILED: ${e.message}`; }
-
-  // Check which files changed — used to trigger selective rebuilds
-  const changedFiles = gitChangedFiles();
   const apps = loadApps();
+  const restarted = [], rebuilt = [];
+  let pullOutput = "", changedFiles = [];
 
-  const restarted = [];
-  const rebuilt = [];
+  // Find which registered app this push belongs to (by repo field)
+  const projectApp = apps.find(a => a.repo && a.repo === repo);
 
-  for (const app of apps) {
-    // Check if any rebuildTrigger file changed
-    const needsRebuild = app.dockerfile && (app.rebuildTriggers || [])
-      .some(trigger => changedFiles.some(f => f.endsWith(trigger)));
+  if (projectApp) {
+    // ── Project repo push: pull that specific repo ──────────────────────────
+    const localPath = path.join(GIT_DIR, projectApp.workspace);
+    try {
+      pullOutput = execSync(`git -C "${localPath}" pull`, { timeout: 30000 }).toString().trim();
+      console.log(`[webhook] pulled ${projectApp.id}: ${pullOutput}`);
+    } catch (e) { pullOutput = `FAILED: ${e.message}`; }
 
-    if (needsRebuild) {
+    // Rebuild if rebuildTriggers match changed files
+    if (projectApp.dockerfile) {
       try {
-        await containerRebuild(app, msg => console.log(`[rebuild:${app.id}]`, msg));
-        rebuilt.push(app.id);
-      } catch (e) {
-        console.error(`[rebuild:${app.id}] failed:`, e.message);
+        changedFiles = execSync(`git -C "${localPath}" diff --name-only HEAD@{1} HEAD 2>/dev/null`)
+          .toString().trim().split("\n").filter(Boolean);
+        const needsRebuild = (projectApp.rebuildTriggers || [])
+          .some(t => changedFiles.some(f => f.endsWith(t)));
+        if (needsRebuild) {
+          await containerRebuild(projectApp, msg => console.log(`[rebuild:${projectApp.id}]`, msg));
+          rebuilt.push(projectApp.id);
+        }
+      } catch (e) { console.error(`[webhook] rebuild check failed:`, e.message); }
+    }
+    // Note: Expo hot-reloads automatically when files change on disk — no restart needed
+  } else {
+    // ── Infrastructure push (Code-On-The-Go itself) ─────────────────────────
+    try {
+      pullOutput = execSync(`git -C ${GIT_DIR} pull`, { timeout: 30000 }).toString().trim();
+    } catch (e) { pullOutput = `FAILED: ${e.message}`; }
+
+    changedFiles = gitChangedFiles();
+
+    for (const app of apps) {
+      const needsRebuild = app.dockerfile && (app.rebuildTriggers || [])
+        .some(t => changedFiles.some(f => f.endsWith(t)));
+      if (needsRebuild) {
+        try {
+          await containerRebuild(app, msg => console.log(`[rebuild:${app.id}]`, msg));
+          rebuilt.push(app.id);
+        } catch (e) { console.error(`[rebuild:${app.id}] failed:`, e.message); }
+      } else if (app.autorestart) {
+        try {
+          execSync(`docker restart ${containerName(app.id)}`, { timeout: 30000 });
+          restarted.push(app.id);
+        } catch {}
       }
-    } else if (app.autorestart) {
-      try {
-        execSync(`docker restart ${containerName(app.id)}`, { timeout: 30000 });
-        restarted.push(app.id);
-      } catch {}
     }
   }
 

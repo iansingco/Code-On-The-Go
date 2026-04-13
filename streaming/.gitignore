@@ -2,3 +2,5 @@
 data/
 workspace/
 node_modules/
+# Cloned project repos — managed by the launcher, not part of this repo
+repos/
