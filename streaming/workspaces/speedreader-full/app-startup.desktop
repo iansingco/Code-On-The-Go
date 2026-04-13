@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=SpeedReader FULL Startup
+Exec=/dockerstartup/custom_startup.sh
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true

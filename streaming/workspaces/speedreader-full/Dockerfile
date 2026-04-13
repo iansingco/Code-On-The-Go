@@ -1,9 +1,7 @@
 # SpeedReader FULL — VS Code + Node 20 KASM Workspace
 #
 # Full dev environment: VS Code + Expo CLI pre-installed.
-# Mount the repo at /home/kasm-user/workspace via docker-compose volume.
-# In the VS Code terminal, run: npm run web
-# Then open the Chromium browser inside the stream to preview at localhost:8081.
+# Mount the repo at /home/kasm-user/workspace via docker run -v.
 
 ARG BASE_TAG="1.18.0-rolling-daily"
 FROM kasmweb/vs-code:$BASE_TAG
@@ -18,12 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-cer
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-install Expo CLI globally so first run is fast
 RUN npm install -g expo-cli
 
-# Auto-open VS Code to the workspace on session start
 COPY custom_startup.sh $STARTUPDIR/custom_startup.sh
 RUN chmod 755 $STARTUPDIR/custom_startup.sh
+
+# XFCE autostart — reliable in standalone mode
+RUN mkdir -p $HOME/.config/autostart
+COPY app-startup.desktop $HOME/.config/autostart/speedreader-full.desktop
 
 RUN chown 1000:0 $HOME
 RUN $STARTUPDIR/set_user_permission.sh $HOME

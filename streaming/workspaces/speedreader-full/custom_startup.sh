@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Runs when the KASM session starts.
-# Opens VS Code to the SpeedReader repo.
-# Run `npm run web` in the VS Code terminal to preview in browser.
+# Called by XFCE autostart after the desktop is ready.
+# Opens VS Code to the mounted workspace.
 code /home/kasm-user/workspace &
