@@ -64,11 +64,14 @@ function containerStartedAt(id) {
   } catch { return null; }
 }
 
-// Resolve a workspace path: app.workspace is relative to the streaming/ dir.
-// Returns the HOST path (passed to docker run -v) if HOST_REPO_PATH is set,
-// otherwise falls back to the in-container /repo path (works for Linux hosts).
+// Resolve a workspace path for use in docker run -v.
+// Supports absolute paths (passed through as-is) and relative paths
+// (resolved against HOST_REPO_PATH on Windows, or GIT_DIR on Linux).
 function resolveWorkspacePath(workspace) {
   if (!workspace) return null;
+  // Absolute path (Unix /foo or Windows C:\foo) — use directly
+  if (path.isAbsolute(workspace) || /^[A-Za-z]:/.test(workspace))
+    return workspace.replace(/\\/g, "/");
   if (HOST_REPO_PATH) return path.join(HOST_REPO_PATH, workspace).replace(/\\/g, "/");
   return path.join(GIT_DIR, workspace);
 }
