@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Called by XFCE autostart after the desktop is ready.
-# Starts Expo dev server and opens a browser to the preview.
+# Installs deps if needed, starts Expo dev server, opens browser to preview.
 
 WORKSPACE=/home/kasm-user/workspace
 APP_PORT=8081
 
-# Write a loading page to disk (avoids python3 URL-encoding complexity)
+# Write a loading page to disk
 cat > /tmp/loading.html << 'EOF'
 <!DOCTYPE html>
 <html>
@@ -26,7 +26,7 @@ cat > /tmp/loading.html << 'EOF'
 </head>
 <body>
   <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-  <p>Starting app…</p>
+  <p id="msg">Starting app…</p>
   <script>
     setInterval(() => {
       fetch("http://localhost:8081")
@@ -46,8 +46,14 @@ if [ -n "$BROWSER" ]; then
   "$BROWSER" --kiosk "file:///tmp/loading.html" &>/dev/null &
 fi
 
-# Start Expo in background if the repo is mounted
+# Start Expo if the repo is mounted
 if [ -f "$WORKSPACE/package.json" ]; then
   cd "$WORKSPACE"
+
+  # Install dependencies on first run (repo cloned but npm install not yet run)
+  if [ ! -d "node_modules" ]; then
+    npm install &>/tmp/npm-install.log
+  fi
+
   npm run web -- --port $APP_PORT &>/tmp/expo.log &
 fi
