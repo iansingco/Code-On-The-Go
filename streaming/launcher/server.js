@@ -5,7 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const { WebSocketServer } = require("ws");
-const pty = require("node-pty");
 
 const app = express();
 const server = http.createServer(app);
@@ -447,38 +446,35 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ── WebSocket Terminal ─────────────────────────────────────────────────────────
-// Each WS connection gets its own bash pty session.
+// Each WS connection gets its own shell session (child_process, no native deps).
 
 const wss = new WebSocketServer({ server, path: "/terminal" });
 
 wss.on("connection", (ws) => {
-  const shellBin = require("fs").existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh";
-  const shell = pty.spawn(shellBin, [], {
-    name: "xterm-color",
-    cols: 120,
-    rows: 30,
-    cwd: "/",
-    env: { ...process.env, HOME: "/root", TERM: "xterm-color" },
+  const shellBin = fs.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh";
+  const shell = spawn(shellBin, [], {
+    cwd: "/repo",
+    env: { ...process.env, HOME: "/root", TERM: "xterm", PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" },
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
-  shell.onData((data) => {
+  const send = (data) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "output", data }));
-  });
+  };
 
-  shell.onExit(() => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "exit" }));
-    ws.close();
-  });
+  shell.stdout.on("data", (d) => send(d.toString()));
+  shell.stderr.on("data", (d) => send(d.toString()));
+  shell.on("exit", () => { ws.close(); });
+  shell.on("error", (e) => { send(`\r\nshell error: ${e.message}\r\n`); ws.close(); });
 
   ws.on("message", (raw) => {
     try {
       const msg = JSON.parse(raw);
-      if (msg.type === "input") shell.write(msg.data);
-      else if (msg.type === "resize") shell.resize(msg.cols, msg.rows);
+      if (msg.type === "input") shell.stdin.write(msg.data);
     } catch {}
   });
 
-  ws.on("close", () => shell.kill());
+  ws.on("close", () => { try { shell.kill(); } catch {} });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
