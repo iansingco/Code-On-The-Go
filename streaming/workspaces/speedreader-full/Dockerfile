@@ -16,8 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-cer
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g expo-cli
-
 COPY custom_startup.sh $STARTUPDIR/custom_startup.sh
 RUN chmod 755 $STARTUPDIR/custom_startup.sh
 
