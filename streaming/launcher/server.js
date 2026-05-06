@@ -452,12 +452,13 @@ app.post("/webhook", async (req, res) => {
 const wss = new WebSocketServer({ server, path: "/terminal" });
 
 wss.on("connection", (ws) => {
-  const shell = pty.spawn("bash", [], {
+  const shellBin = require("fs").existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh";
+  const shell = pty.spawn(shellBin, [], {
     name: "xterm-color",
     cols: 120,
     rows: 30,
-    cwd: GIT_DIR,
-    env: process.env,
+    cwd: "/",
+    env: { ...process.env, HOME: "/root", TERM: "xterm-color" },
   });
 
   shell.onData((data) => {
