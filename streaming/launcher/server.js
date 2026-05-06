@@ -446,35 +446,56 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ── WebSocket Terminal ─────────────────────────────────────────────────────────
-// Each WS connection gets its own shell session (child_process, no native deps).
+// Terminal: executes one command at a time, streams output back.
 
 const wss = new WebSocketServer({ server, path: "/terminal" });
 
 wss.on("connection", (ws) => {
-  const shellBin = fs.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh";
-  const shell = spawn(shellBin, [], {
-    cwd: "/repo",
-    env: { ...process.env, HOME: "/root", TERM: "xterm", PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
   const send = (data) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "output", data }));
   };
 
-  shell.stdout.on("data", (d) => send(d.toString()));
-  shell.stderr.on("data", (d) => send(d.toString()));
-  shell.on("exit", () => { ws.close(); });
-  shell.on("error", (e) => { send(`\r\nshell error: ${e.message}\r\n`); ws.close(); });
+  send("Terminal ready. Type a command.\r\n\x1b[32m$ \x1b[0m");
+
+  let buf = "";
+  let running = false;
 
   ws.on("message", (raw) => {
     try {
       const msg = JSON.parse(raw);
-      if (msg.type === "input") shell.stdin.write(msg.data);
+      if (msg.type !== "input") return;
+
+      buf += msg.data;
+      const nl = buf.indexOf("\n");
+      if (nl === -1) return;
+
+      const cmd = buf.slice(0, nl).replace(/\r$/, "").trim();
+      buf = buf.slice(nl + 1);
+
+      if (!cmd || running) return;
+      running = true;
+
+      send(cmd + "\r\n");
+
+      const proc = spawn("sh", ["-c", cmd], {
+        cwd: "/repo",
+        env: { ...process.env, HOME: "/root" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      proc.stdout.on("data", (d) => send(d.toString().replace(/\n/g, "\r\n")));
+      proc.stderr.on("data", (d) => send(d.toString().replace(/\n/g, "\r\n")));
+      proc.on("close", () => {
+        running = false;
+        send("\x1b[32m$ \x1b[0m");
+      });
+      proc.on("error", (e) => {
+        send(`error: ${e.message}\r\n`);
+        running = false;
+        send("\x1b[32m$ \x1b[0m");
+      });
     } catch {}
   });
-
-  ws.on("close", () => { try { shell.kill(); } catch {} });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
