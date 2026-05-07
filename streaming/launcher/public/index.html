@@ -214,7 +214,11 @@ function getState(id) {
   return state[id];
 }
 
-function appUrl(port) { return `https://${host}:${port}`; }
+function appUrl(app) {
+  // Expo dev servers run plain HTTP; KASM workspaces use HTTPS
+  const proto = app.type === "expo" ? "http" : "https";
+  return `${proto}://${host.split(":")[0]}:${app.port}`;
+}
 
 function formatUptime(s) {
   if (!s) return "";
@@ -250,9 +254,13 @@ function renderCards(apps) {
       actionBtns = `<button class="btn btn-start" onclick="toggleApp('${app.id}','start')">Start</button>`;
     }
 
-    // Only show separate Rebuild button when the image is already built (running or stopped)
-    const rebuildBtn = app.rebuildable && app.imageReady && !s.busy && !s.building
-      ? `<button class="btn btn-rebuild" onclick="rebuild('${app.id}')">Rebuild</button>`
+    // Expo: show Restart button; KASM dockerfile apps: show Rebuild button
+    const rebuildBtn = !s.busy && !s.building
+      ? (app.type === "expo" && running
+          ? `<button class="btn btn-rebuild" onclick="rebuild('${app.id}')">Restart</button>`
+          : app.rebuildable && app.imageReady
+            ? `<button class="btn btn-rebuild" onclick="rebuild('${app.id}')">Rebuild</button>`
+            : "")
       : "";
 
     const logHtml = s.log.length
@@ -274,7 +282,7 @@ function renderCards(apps) {
         </div>
       </div>
       <div class="card-actions">
-        <button class="btn btn-open" ${!running||s.building?"disabled":""} onclick="openApp(${app.port})">Open</button>
+        <button class="btn btn-open" ${!running||s.building?"disabled":""} onclick="openApp(${app.port},'${app.type||'kasm'}')">Open</button>
         ${actionBtns}
         ${rebuildBtn}
       </div>
@@ -479,7 +487,7 @@ window.addEventListener("resize", () => {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-function openApp(port) { window.open(appUrl(port), "_blank"); }
+function openApp(port, type) { window.open(appUrl({ port, type }), "_blank"); }
 
 async function toggleApp(id, action) {
   getState(id).busy = true;

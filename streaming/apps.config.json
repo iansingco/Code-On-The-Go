@@ -14,14 +14,15 @@
   {
     "id": "speedreader",
     "label": "SpeedReader",
-    "port": 6902,
+    "type": "expo",
+    "port": 8081,
     "icon": "📖",
-    "description": "Expo web preview — Chromium fullscreen, no VS Code",
-    "dockerfile": "workspaces/speedreader",
+    "description": "Expo web — direct preview, no desktop",
     "workspace": "repos/SpeedReader",
+    "repo": "iansingco/SpeedReader",
     "env": [],
     "autorestart": false,
-    "rebuildTriggers": ["package.json"]
+    "rebuildTriggers": ["package.json", "package-lock.json"]
   },
   {
     "id": "speedreader-full",

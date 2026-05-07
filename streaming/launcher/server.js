@@ -96,15 +96,30 @@ function resolvedImage(app) {
 // If the container already exists (stopped), just start it.
 function containerStart(app) {
   const name = containerName(app.id);
-  // Check if container exists (running or stopped)
   try {
     execSync(`docker inspect ${name} 2>/dev/null`);
-    // Exists — just start it
     execSync(`docker start ${name}`);
     return;
   } catch {}
 
-  // Doesn't exist — docker run it
+  const wsPath = resolveWorkspacePath(app.workspace);
+
+  if (app.type === "expo") {
+    // Lightweight Node container — no desktop, just expo start --web
+    const args = [
+      "docker run -d",
+      `--name ${name}`,
+      "--restart unless-stopped",
+      `-p ${app.port}:${app.port}`,
+      wsPath ? `-v "${wsPath}:/workspace"` : "",
+      "node:20-alpine",
+      `sh -c "cd /workspace && npm install && npx expo start --web --host 0.0.0.0 --port ${app.port} --non-interactive"`,
+    ].filter(Boolean);
+    execSync(args.join(" "));
+    return;
+  }
+
+  // KASM workspace
   const args = [
     "docker run -d",
     `--name ${name}`,
@@ -114,14 +129,11 @@ function containerStart(app) {
     `-e VNC_PW=${KASM_PASSWORD}`,
   ];
 
-  // Pass-through env vars defined in app config
   for (const key of (app.env || [])) {
     const val = process.env[key];
     if (val) args.push(`-e ${key}=${val}`);
   }
 
-  // Workspace volume mount
-  const wsPath = resolveWorkspacePath(app.workspace);
   if (wsPath) args.push(`-v "${wsPath}:/home/kasm-user/workspace"`);
 
   args.push(resolvedImage(app));
@@ -266,20 +278,29 @@ app.post("/api/apps/:id/stop", (req, res) => {
 });
 
 // Rebuild triggers a docker build + container restart (async, streams log via SSE).
+// For expo apps, "rebuild" just restarts the container so npm install re-runs.
 app.get("/api/apps/:id/rebuild", async (req, res) => {
   const app = loadApps().find(a => a.id === req.params.id);
   if (!app) return res.status(404).json({ error: "Unknown app" });
-  if (!app.dockerfile) return res.status(400).json({ error: "No dockerfile configured" });
 
-  // Server-Sent Events so the UI can stream build progress
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  const send = (msg) => { res.write(`data: ${JSON.stringify({ msg })}\n\n`); console.log(`[rebuild:${app.id}]`, msg); };
 
-  const send = (msg) => {
-    res.write(`data: ${JSON.stringify({ msg })}\n\n`);
-    console.log(`[rebuild:${app.id}]`, msg);
-  };
+  if (app.type === "expo") {
+    send("Restarting Expo container (re-runs npm install)...");
+    try {
+      execSync(`docker restart ${containerName(app.id)}`);
+      send("Done.");
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch (e) {
+      res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+    }
+    return res.end();
+  }
+
+  if (!app.dockerfile) return res.status(400).json({ error: "No dockerfile configured" });
 
   try {
     await containerRebuild(app, send);
@@ -401,20 +422,27 @@ app.post("/webhook", async (req, res) => {
       console.log(`[webhook] pulled ${projectApp.id}: ${pullOutput}`);
     } catch (e) { pullOutput = `FAILED: ${e.message}`; }
 
-    // Rebuild if rebuildTriggers match changed files
-    if (projectApp.dockerfile) {
-      try {
-        changedFiles = execSync(`git -C "${localPath}" diff --name-only HEAD@{1} HEAD 2>/dev/null`)
-          .toString().trim().split("\n").filter(Boolean);
-        const needsRebuild = (projectApp.rebuildTriggers || [])
-          .some(t => changedFiles.some(f => f.endsWith(t)));
-        if (needsRebuild) {
-          await containerRebuild(projectApp, msg => console.log(`[rebuild:${projectApp.id}]`, msg));
-          rebuilt.push(projectApp.id);
-        }
-      } catch (e) { console.error(`[webhook] rebuild check failed:`, e.message); }
+    // Check which files changed
+    try {
+      changedFiles = execSync(`git -C "${localPath}" diff --name-only HEAD@{1} HEAD 2>/dev/null`)
+        .toString().trim().split("\n").filter(Boolean);
+    } catch {}
+
+    if (projectApp.type === "expo") {
+      // Expo hot-reloads code changes automatically; only restart when deps change
+      const depsChanged = (projectApp.rebuildTriggers || [])
+        .some(t => changedFiles.some(f => f.endsWith(t)));
+      if (depsChanged) {
+        try { execSync(`docker restart ${containerName(projectApp.id)}`); restarted.push(projectApp.id); } catch {}
+      }
+    } else if (projectApp.dockerfile) {
+      const needsRebuild = (projectApp.rebuildTriggers || [])
+        .some(t => changedFiles.some(f => f.endsWith(t)));
+      if (needsRebuild) {
+        await containerRebuild(projectApp, msg => console.log(`[rebuild:${projectApp.id}]`, msg));
+        rebuilt.push(projectApp.id);
+      }
     }
-    // Note: Expo hot-reloads automatically when files change on disk — no restart needed
   } else {
     // ── Infrastructure push (Code-On-The-Go itself) ─────────────────────────
     try {
