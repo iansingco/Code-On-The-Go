@@ -6,4 +6,4 @@ COPY package.json .
 RUN npm install
 COPY . .
 # nodemon watches server.js — git pull on host = instant reload, no rebuild needed
-CMD ["npx", "nodemon", "--watch", "server.js", "--watch", "public", "server.js"]
+CMD ["npx", "nodemon", "--legacy-watch", "--watch", "server.js", "--watch", "public", "server.js"]
